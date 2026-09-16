@@ -1,0 +1,39 @@
+Compile complete suite with thread checking and optimization enabled
+
+gcc -Wall -Wextra -pthread -O2 queue.c matrix.c pool.c r2_main.c -o r2_main -lm
+./r2_main 4 20
+
+run Valgrinds tool to verify zero race conditions or deadlocks
+valgrind --tool=helgrind ./r2_main 4 20
+
+Compiler Command Breakdown
+gcc -Wall -Wextra -pthread -O2 queue.c matrix.c pool.c r2_main.c -o r2_main -lm
+
+gcc: Invokes the GNU Compiler Collection frontend to compile C source code into executable machine instructions.
+
+-Wall: Enables standard compiler warnings for common coding issues (such as uninitialized variables or missing return statements).
+
+-Wextra: Enables supplementary warnings not captured by -Wall (such as unused function parameters or sign-compare mismatches).
+
+-pthread: Configures preprocessor macros for multi-threading and links the libpthread library required for pthread_create, pthread_mutex_*, and pthread_cond_*.
+
+-O2: Turns on Level 2 compiler optimizations (such as instruction scheduling and loop optimizations) so timing results reflect realistic production performance.
+
+queue.c matrix.c pool.c r2_main.c: Specifies the C source files compiled and linked together into a unified binary.
+
+-o r2_main: Tells GCC to name the resulting executable binary r2_main instead of the default a.out.
+
+-lm: Links the standard C system math library (libm), required when using functions from <math.h> like fabs().
+
+Valgrind Command Breakdown
+valgrind --tool=helgrind ./r2_main 4 20
+
+valgrind: Launches the Valgrind instrumentation framework to wrap and inspect the executable while it runs.
+
+--tool=helgrind: Selects the Helgrind engine—a specialized POSIX thread analyzer that monitors memory accesses and lock orders to detect data races, deadlocks, and invalid mutex usage.
+
+./r2_main: Executes the compiled binary located in the current directory.
+
+4: Passes 4 as the first command-line argument (argv[1]), setting the worker thread count.
+
+20: Passes 20 as the second command-line argument (argv[2]), setting the total number of matrix inversion jobs to execute.

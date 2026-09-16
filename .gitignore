@@ -1,0 +1,8 @@
+# Executables & binaries
+r1_test
+r2_main
+*.o
+*.out
+
+# VS Code directory settings
+.vscode/
