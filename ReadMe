@@ -1,39 +1,172 @@
-Compile complete suite with thread checking and optimization enabled
+# Matrix Inversions using Multithreading: Queue + Worker Pool (pthreads)
 
+**Course:** CSC 718: Operating Systems and Parallel Programming (Fall 2026)  
+**Institution:** Dakota State University  
+**Instructor:** Dr. Abid Mehmood  
+**Assignment:** Assignment 1 — POSIX Threads Synchronization & Scaling Study  
+**Author:** Sam Hartpence  
+
+---
+
+## Executive Summary
+This project implements a multi-threaded producer-consumer system in C using POSIX threads (`pthreads`). It evaluates thread synchronization, bounded queue overhead, and parallel scaling performance by computing the matrix inverses of generated n X n double-precision floating-point matrices via Gauss-Jordan elimination (O(n^3) computational complexity).
+
+---
+
+## Technical Architecture & Parameters
+
+### Execution Parameters
+* **Worker Count (N):** Configurable thread pool size (N \in \{1, 2, 4, 8\} for R3 scaling studies).
+* **Job Count (M):** Configurable number of total tasks submitted to the bounded queue.
+* **Job Type & Workload:**
+  * **R2 Driver (`r2_main`):** Heterogeneous workloads using mixed matrix dimensions (4 X 4, 10 X 10, 50 X 50, 100 X 100) to evaluate job granularity handling.
+  * **R3 Scaling Driver (`r3_main`):** Homogeneous workloads using deterministic 150 X 150 strictly diagonally dominant matrices generated via fixed seeds (`rand()`), ensuring the 1-worker execution baseline (T(1)) runs for several seconds to provide reliable timing metrics.
+
+### Timing Method
+Timing is recorded using the high-resolution monotonic clock `clock_gettime(CLOCK_MONOTONIC, &ts)`.
+* **Timer Start:** Triggered *after* all worker threads are created and initialized, immediately prior to enqueuing jobs.
+* **Timer Stop:** Triggered *after* all submitted jobs have been processed by workers, immediately before initiating worker pool shutdown (poison pills).
+* **Metric:** Wall-clock execution time in seconds, calculated as:
+  \text{Elapsed Time} = (t_{\text{end}}.\text{tv\_sec} - t_{\text{start}}.\text{tv\_sec}) + \frac{t_{\text{end}}.\text{tv\_nsec} - t_{\text{start}}.\text{tv\_nsec}}{10^9}
+
+---
+
+## Getting Started & Environment Setup
+
+### Prerequisites
+* Operating System: Linux (or Windows 11 with WSL 2 Ubuntu)
+* Toolchain: GCC compiler with POSIX Threads support (`-pthread`) and Math library (`-lm`)
+* Optional Debugger: Valgrind (Helgrind tool for race detection)
+
+---
+
+## Build Instructions
+
+Compile all target executables from the source directory using `gcc`:
+
+```bash
+# 1. Compile Requirement 1 Unit Test
+gcc -Wall -Wextra -pthread -O2 queue.c r1_test.c -o r1_test -lm
+
+# 2. Compile Requirement 2 Worker Pool Driver (Heterogeneous Workload)
 gcc -Wall -Wextra -pthread -O2 queue.c matrix.c pool.c r2_main.c -o r2_main -lm
-./r2_main 4 20
 
-run Valgrinds tool to verify zero race conditions or deadlocks
-valgrind --tool=helgrind ./r2_main 4 20
+# 3. Compile Requirement 3 Scaling Study Driver (Homogeneous Workload)
+gcc -Wall -Wextra -pthread -O2 queue.c matrix.c pool.c r3_main.c -o r3_main -lm
 
-Compiler Command Breakdown
-gcc -Wall -Wextra -pthread -O2 queue.c matrix.c pool.c r2_main.c -o r2_main -lm
+## Execution Instructions
+    # Running R1 Unit Test (Bounded Queue Verification)
+        #Verifies exact-once processing and synchronization across multiple #producer and consumer threads:
+        ./r1_test
 
-gcc: Invokes the GNU Compiler Collection frontend to compile C source code into executable machine instructions.
+    #Running R2 Driver (Worker Pool Demo)
+        #Executes the worker pool over $M$ heterogeneous jobs with $N$ worker threads:
+        # Syntax: ./r2_main <num_workers> <num_jobs>
+        ./r2_main 4 20
 
--Wall: Enables standard compiler warnings for common coding issues (such as uninitialized variables or missing return statements).
+    #Running R3 Scaling Experiments
+        #Executes the standardized scaling benchmarks across N = {1, 2, 4, 8} workers:
 
--Wextra: Enables supplementary warnings not captured by -Wall (such as unused function parameters or sign-compare mismatches).
+    ./r3_main 1 100
+    ./r3_main 2 100
+    ./r3_main 4 100
+    ./r3_main 8 100
 
--pthread: Configures preprocessor macros for multi-threading and links the libpthread library required for pthread_create, pthread_mutex_*, and pthread_cond_*.
+    #Verification & Thread Safety Analysis
+        #To verify zero memory leaks, thread race conditions, or deadlocks, run Helgrind:
+        valgrind --tool=helgrind ./r2_main 4 20
 
--O2: Turns on Level 2 compiler optimizations (such as instruction scheduling and loop optimizations) so timing results reflect realistic production performance.
+ 
+## Compile complete suite with thread checking and optimization enabled
 
-queue.c matrix.c pool.c r2_main.c: Specifies the C source files compiled and linked together into a unified binary.
+    gcc -Wall -Wextra -pthread -O2 queue.c matrix.c pool.c r2_main.c -o r2_main -lm
 
--o r2_main: Tells GCC to name the resulting executable binary r2_main instead of the default a.out.
+    ./r2_main 4 20
 
--lm: Links the standard C system math library (libm), required when using functions from <math.h> like fabs().
+    run Valgrinds tool to verify zero race conditions or deadlocks
 
-Valgrind Command Breakdown
-valgrind --tool=helgrind ./r2_main 4 20
+    valgrind --tool=helgrind ./r2_main 4 20
 
-valgrind: Launches the Valgrind instrumentation framework to wrap and inspect the executable while it runs.
+    #Compiler Command Breakdown
 
---tool=helgrind: Selects the Helgrind engine—a specialized POSIX thread analyzer that monitors memory accesses and lock orders to detect data races, deadlocks, and invalid mutex usage.
+        # gcc -Wall -Wextra -pthread -O2 queue.c matrix.c pool.c r2_main.c -o r2_main -lm
 
-./r2_main: Executes the compiled binary located in the current directory.
+        # gcc: Invokes the GNU Compiler Collection frontend to compile C source code into executable machine instructions.
 
-4: Passes 4 as the first command-line argument (argv[1]), setting the worker thread count.
+        # -Wall: Enables standard compiler warnings for common coding issues (such as uninitialized variables or missing return statements).
 
-20: Passes 20 as the second command-line argument (argv[2]), setting the total number of matrix inversion jobs to execute.
+        # -Wextra: Enables supplementary warnings not captured by -Wall (such as unused function parameters or sign-compare mismatches).
+
+        # -pthread: Configures preprocessor macros for multi-threading and links the libpthread library required for pthread_create, pthread_mutex_*, and pthread_cond_*.
+
+        # -O2: Turns on Level 2 compiler optimizations (such as instruction scheduling and loop optimizations) so timing results reflect realistic production performance.
+
+        # queue.c matrix.c pool.c r2_main.c: Specifies the C source files compiled and linked together into a unified binary.
+
+        # -o r2_main: Tells GCC to name the resulting executable binary r2_main instead of the default a.out.
+
+        # -lm: Links the standard C system math library (libm), required when using functions from <math.h> like fabs().
+
+    #Valgrind Command Breakdown
+
+        # valgrind --tool=helgrind ./r2_main 4 20
+
+        # valgrind: Launches the Valgrind instrumentation framework to wrap and inspect the executable while it runs.
+
+        # --tool=helgrind: Selects the Helgrind engine—a specialized POSIX thread analyzer that monitors memory accesses and lock orders to detect data races, deadlocks, and invalid mutex usage.
+
+        # ./r2_main: Executes the compiled binary located in the current directory.
+
+        # 4: Passes 4 as the first command-line argument (argv[1]), setting the worker thread count.
+
+        # 20: Passes 20 as the second command-line argument (argv[2]), setting the total number of matrix inversion jobs to execute.
+
+## Usage: Running and sample ouput
+
+    #Example ./r2_main 4 20
+
+        === Starting R2 Main Test Suite ===
+
+        Workers: 4 | Total Jobs: 20
+
+
+
+        === Execution Summary ===
+
+        Worker Threads: 4
+
+        Jobs Processed: 20
+
+        Elapsed Time:   0.0021 seconds
+
+        Throughput:     9749.87 jobs/sec
+
+        Status: SUCCESS (All threads joined cleanly, zero leaks)  
+
+##Assumptions & Known Limitations
+    #System Assumptions
+        Deterministic Inputs: Matrix elements are seeded deterministically to guarantee reproducible workload complexity across runs.
+
+    #Invertibility: 
+        Generated matrices are strictly diagonally dominant, guaranteeing pivot non-zero integrity during Gauss-Jordan elimination.
+
+    #Environment: 
+        Executed in a POSIX-compliant environment with CLOCK_MONOTONIC support.
+
+##Known Limitations
+    # 1 - Mutex Contention: 
+        A single global mutex protects the bounded queue. At high worker counts (N > 8) or with trivial job workloads, queue synchronization overhead can become a performance bottleneck.
+    # 2 - Hardware Constraints: 
+        Parallel scaling speedup S(N) = T(1) / T(N) is bounded by physical CPU core count and Intel P-core/E-core scheduling asymmetry under WSL 2.
+
+## Acknowledgments & Credits
+
+    #Dr. Abid Mehmood (CSC 718): Guidance on POSIX thread synchronization, condition variables, and parallel architecture.
+
+    #Dr. Mark Spanier (CSC 502): Linear algebra matrix inversion context and algorithmic inspiration.
+
+    #A Note on AI:
+    Generative AI (NoteBookLM) was utilized to develop podcasts that I could listen to on the commute to and from work to help solidify my conceptual understanding, along with conversational AI.  Google Search with AI overview lead me to the discovery of valgrind, although my personal friend, Matt Fischer, enlightened me to its power and use. 
+
+##License
+    #Copyright (c) 2026 Sam Hartpence. Released under the MIT License.

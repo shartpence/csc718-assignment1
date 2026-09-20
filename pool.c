@@ -3,44 +3,32 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-/*
- * POISON PILL SHUTDOWN MECHANISM:
- * A job with id = -1 signals worker threads to terminate.
- */
 #define POISON_PILL_ID -1
 
 static void* worker_routine(void *arg) {
-    bounded_queue_t *queue = (bounded_queue_t*)arg;
+    thread_pool_t *pool = (thread_pool_t*)arg;
 
     while (1) {
-        /*
-         * VULNERABILITY PREVENTION (Deadlock / Lost Signals):
-         * queue_dequeue() encapsulates the mutex lock/unlock and
-         * condition variable wait. Threads will block safely here
-         * without consuming CPU cycles when the queue is empty.
-         */
-        job_t job = queue_dequeue(queue);
+        job_t job = queue_dequeue(pool->queue);
 
-        /* Poison Pill Check */
         if (job.id == POISON_PILL_ID) {
-            break; // Exit worker loop cleanly
+            break;
         }
 
-        /* Execute Matrix Inversion Task */
         Matrix *A = (Matrix*)job.data;
         if (A) {
             Matrix *inv = matrix_invert(A);
-            
-            // Verify correctness for small/test inputs
-            bool ok = matrix_verify_inverse(A, inv, 1e-4);
-            if (!ok) {
-                fprintf(stderr, "[ERROR] Matrix verification failed for Job ID %d\n", job.id);
-            }
-
-            // Prevent memory leaks: worker frees job payloads once executed
             matrix_free(inv);
             matrix_free(A);
         }
+
+        // Increment completion counter and notify main thread
+        pthread_mutex_lock(&pool->completion_mutex);
+        pool->completed_jobs++;
+        if (pool->completed_jobs == pool->target_jobs) {
+            pthread_cond_signal(&pool->all_completed_cond);
+        }
+        pthread_mutex_unlock(&pool->completion_mutex);
     }
     return NULL;
 }
@@ -53,8 +41,13 @@ thread_pool_t* pool_create(int num_threads, int queue_capacity) {
     pool->queue = queue_init(queue_capacity);
     pool->threads = malloc(sizeof(pthread_t) * num_threads);
 
+    pool->target_jobs = 0;
+    pool->completed_jobs = 0;
+    pthread_mutex_init(&pool->completion_mutex, NULL);
+    pthread_cond_init(&pool->all_completed_cond, NULL);
+
     for (int i = 0; i < num_threads; i++) {
-        pthread_create(&pool->threads[i], NULL, worker_routine, pool->queue);
+        pthread_create(&pool->threads[i], NULL, worker_routine, pool);
     }
 
     return pool;
@@ -64,25 +57,29 @@ void pool_submit(thread_pool_t *pool, job_t job) {
     queue_enqueue(pool->queue, job);
 }
 
+void pool_wait(thread_pool_t *pool, int expected_jobs) {
+    pthread_mutex_lock(&pool->completion_mutex);
+    pool->target_jobs = expected_jobs;
+    while (pool->completed_jobs < pool->target_jobs) {
+        pthread_cond_wait(&pool->all_completed_cond, &pool->completion_mutex);
+    }
+    pthread_mutex_unlock(&pool->completion_mutex);
+}
+
 void pool_shutdown(thread_pool_t *pool) {
     if (!pool) return;
 
-    /*
-     * VULNERABILITY PREVENTION (Thread Leak / Deadlock during Shutdown):
-     * Submit exactly N poison pills so every worker thread wakes up, 
-     * exits its loop, and finishes execution cleanly.
-     */
     for (int i = 0; i < pool->thread_count; i++) {
         job_t poison_pill = {.id = POISON_PILL_ID, .data = NULL};
         queue_enqueue(pool->queue, poison_pill);
     }
 
-    /* Wait for all worker threads to terminate */
     for (int i = 0; i < pool->thread_count; i++) {
         pthread_join(pool->threads[i], NULL);
     }
 
-    /* Destroy queue and free pool memory */
+    pthread_mutex_destroy(&pool->completion_mutex);
+    pthread_cond_destroy(&pool->all_completed_cond);
     queue_destroy(pool->queue);
     free(pool->threads);
     free(pool);
